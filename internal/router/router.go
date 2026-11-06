@@ -25,11 +25,20 @@
 package router
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	_ "github.com/NuoXianTech/api/docs"
 	"github.com/NuoXianTech/api/internal/apps/health"
 	"github.com/NuoXianTech/api/internal/config"
+	"github.com/NuoXianTech/api/internal/otel_trace"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -46,7 +55,7 @@ func Serve() {
 	r.Use(gin.Recovery())
 
 	// 补充中间件
-	r.Use(loggerMiddleware(config.Config.App.APIPrefix))
+	r.Use(loggerMiddleware())
 
 	apiGroup := r.Group(config.Config.App.APIPrefix)
 	{
@@ -65,7 +74,50 @@ func Serve() {
 	}
 
 	// Serve
-	if err := r.Run(config.Config.App.Addr); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	server := &http.Server{
+		Addr:              config.Config.App.Addr,
+		Handler:           r,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	err := serveHTTP(ctx, server)
+	stop()
+
+	// 请求结束后刷新追踪队列，避免使用已取消的请求上下文
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if shutdownErr := otel_trace.Shutdown(shutdownCtx); shutdownErr != nil {
+		err = errors.Join(err, fmt.Errorf("shutdown trace: %w", shutdownErr))
+	}
+	if err != nil {
 		log.Fatalf("[API] serve api failed: %v\n", err)
 	}
+}
+
+func serveHTTP(ctx context.Context, server *http.Server) error {
+	serverErrors := make(chan error, 1)
+	go func() {
+		serverErrors <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serverErrors:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+	}
+
+	// 停止接收请求，等待正在处理的请求完成
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		return errors.Join(err, server.Close())
+	}
+	if err := <-serverErrors; !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
 }
