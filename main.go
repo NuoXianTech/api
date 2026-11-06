@@ -28,6 +28,7 @@ import "github.com/NuoXianTech/api/internal/cmd"
 
 // @title API
 // @version 0.1.0
+// @BasePath /api/v1
 func main() {
 	cmd.Execute()
 }
