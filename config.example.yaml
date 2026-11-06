@@ -1,0 +1,64 @@
+# API Config
+# Copy to config.yaml for runtime
+
+# App
+app:
+  app_name: "api"
+  env: "development" # development, testing, production
+  addr: ":8000"
+  session_cookie_name: "api_session_id" # change this in local dev env
+  session_secret: "<uniq string>" # you can't change this after first time start
+  session_domain: ".11na.cn"
+  session_age: 86400
+  session_secure: false
+  session_http_only: false
+  api_prefix: "/api"
+
+# DB
+database:
+  enabled: true
+  host: "127.0.0.1"
+  port: 3306
+  username: "postgres"
+  password: "postgres"
+  database: "api"
+  max_idle_conn: 10
+  max_open_conn: 100
+  conn_max_lifetime: 3600
+  log_level: "info"  # error, warn, info, debug, silent
+  slow_threshold: 200ms
+  ignore_record_not_found_error: false
+
+# Redis config
+redis:
+  enabled: true
+  host: "127.0.0.1"
+  port: 6379
+  username: ""
+  password: ""
+  db: 0
+  pool_size: 100
+  min_idle_conn: 10
+  dial_timeout: 5
+  read_timeout: 3
+  write_timeout: 3
+
+# Log
+log:
+  level: "info"  # debug, info, warn, error, fatal, panic
+  format: "json"  # text, json
+  output: "stdout"  # stdout, file
+  file_path: "./logs/app.log"
+  max_size: 100
+  max_age: 30
+  max_backups: 10
+  compress: true
+
+# Worker
+worker:
+  port: 8001 # worker probe port
+  concurrency: 50
+
+# OpenTelemetry 配置
+otel:
+  sampling_rate: 0.1  # 采样率 0.0-1.0
