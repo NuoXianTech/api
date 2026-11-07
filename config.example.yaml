@@ -18,9 +18,9 @@ app:
 database:
   enabled: true
   host: "127.0.0.1"
-  port: 3306
-  username: "postgres"
-  password: "postgres"
+  port: 5432
+  username: "api"
+  password: ""
   database: "api"
   max_idle_conn: 10
   max_open_conn: 100

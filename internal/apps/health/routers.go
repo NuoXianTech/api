@@ -25,8 +25,13 @@
 package health
 
 import (
+	"context"
 	"net/http"
+	"time"
 
+	"github.com/NuoXianTech/api/internal/config"
+	"github.com/NuoXianTech/api/internal/db"
+	"github.com/NuoXianTech/api/internal/logger"
 	"github.com/gin-gonic/gin"
 )
 
@@ -52,12 +57,29 @@ type ReadyResponse struct {
 
 // Ready godoc
 // @Summary 就绪检查
-// @Description 当前仅检查 HTTP 服务；数据库和 Redis 检查将在对应模块接入后补齐。
+// @Description 检查已启用的 PostgreSQL，检查超时为 10 秒。
 // @Tags health
 // @Produce json
 // @Success 200 {object} ReadyResponse
+// @Failure 500 {object} ReadyResponse
 // @Router /ready [get]
 func Ready(c *gin.Context) {
-	// TODO: 接入 internal/db 后，使用请求上下文检查 PostgreSQL 和 Redis 连接。
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	// check postgres
+	if config.Config.Database.Enabled {
+		sqlDB, err := db.DB(ctx).DB()
+		if err != nil {
+			logger.ErrorF(ctx, "[Ready] postgres check failed: %v", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, ReadyResponse{})
+			return
+		}
+		if err := sqlDB.PingContext(ctx); err != nil {
+			logger.ErrorF(ctx, "[Ready] postgres check failed: %v", err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, ReadyResponse{})
+			return
+		}
+	}
 	c.JSON(http.StatusOK, ReadyResponse{})
 }
