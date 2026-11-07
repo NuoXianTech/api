@@ -1,7 +1,6 @@
 /*
  * MIT License
  *
- * Copyright (c) 2025 linux.do
  * Copyright (c) 2026 nuoxi4n, NuoXianTech
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
