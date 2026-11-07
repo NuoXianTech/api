@@ -32,17 +32,14 @@ import (
 	"github.com/NuoXianTech/api/internal/logger"
 	"github.com/NuoXianTech/api/internal/otel_trace"
 	"github.com/gin-gonic/gin"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
 
 func loggerMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 初始化 Trace
-		ctx := otel.GetTextMapPropagator().Extract(c.Request.Context(), propagation.HeaderCarrier(c.Request.Header))
-		ctx, span := otel_trace.Start(ctx, "LoggerMiddleware", trace.WithSpanKind(trace.SpanKindServer))
+		ctx, span := otel_trace.Start(c.Request.Context(), "LoggerMiddleware")
 		defer span.End()
 		c.Request = c.Request.WithContext(ctx)
 

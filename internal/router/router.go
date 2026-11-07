@@ -38,13 +38,44 @@ import (
 	_ "github.com/NuoXianTech/api/docs"
 	"github.com/NuoXianTech/api/internal/apps/health"
 	"github.com/NuoXianTech/api/internal/config"
+	"github.com/NuoXianTech/api/internal/db"
 	"github.com/NuoXianTech/api/internal/otel_trace"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 )
 
 func Serve() {
+	var serveErr error
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := otel_trace.Shutdown(ctx); err != nil {
+			serveErr = errors.Join(serveErr, fmt.Errorf("shutdown trace: %w", err))
+		}
+		if serveErr != nil {
+			log.Fatalf("[API] serve api failed: %v", serveErr)
+		}
+	}()
+	serveErr = serve()
+}
+
+func serve() error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if config.Config.Database.Enabled {
+		sqlDB, err := db.DB(ctx).DB()
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := sqlDB.Close(); err != nil {
+				log.Printf("[PostgreSQL] close connection failed: %v", err)
+			}
+		}()
+	}
+
 	// 运行模式
 	if config.Config.App.Env == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -55,7 +86,7 @@ func Serve() {
 	r.Use(gin.Recovery())
 
 	// 补充中间件
-	r.Use(loggerMiddleware())
+	r.Use(otelgin.Middleware(config.Config.App.AppName), loggerMiddleware())
 
 	apiGroup := r.Group(config.Config.App.APIPrefix)
 	{
@@ -74,25 +105,12 @@ func Serve() {
 	}
 
 	// Serve
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 	server := &http.Server{
 		Addr:              config.Config.App.Addr,
 		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	err := serveHTTP(ctx, server)
-	stop()
-
-	// 请求结束后刷新追踪队列，避免使用已取消的请求上下文
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if shutdownErr := otel_trace.Shutdown(shutdownCtx); shutdownErr != nil {
-		err = errors.Join(err, fmt.Errorf("shutdown trace: %w", shutdownErr))
-	}
-	if err != nil {
-		log.Fatalf("[API] serve api failed: %v\n", err)
-	}
+	return serveHTTP(ctx, server)
 }
 
 func serveHTTP(ctx context.Context, server *http.Server) error {

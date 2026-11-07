@@ -36,7 +36,7 @@ const docTemplate = `{
         },
         "/ready": {
             "get": {
-                "description": "当前仅检查 HTTP 服务；数据库和 Redis 检查将在对应模块接入后补齐。",
+                "description": "检查已启用的 PostgreSQL，检查超时为 10 秒。",
                 "produces": [
                     "application/json"
                 ],
@@ -47,6 +47,12 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/health.ReadyResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/health.ReadyResponse"
                         }
